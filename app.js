@@ -1,12 +1,12 @@
 import {VERSION,MAP,DIRECTIONS,ENEMY_NAME,initialState,step,useItem,itemLabel,renameItem,bindDirectionInputs} from './core.js';
 import {SaveStore} from './storage.js';
 const $=id=>document.getElementById(id),canvas=$('map'),ctx=canvas.getContext('2d'),buttons=[...document.querySelectorAll('[data-direction]')];
-const store=new SaveStore(),hero=new Image(),T=48;let state=initialState(),ready=false,failed=false,saveID=0,selectedKind=null,choosingIdentity=false;
+const store=new SaveStore(),hero=new Image(),T=48;let state=initialState(),ready=false,failed=false,saveID=0,selectedKind=null,choosingIdentity=false,directionInputs=null;
 canvas.width=MAP[0].length*T;canvas.height=MAP.length*T;
 $('version').textContent=`v${VERSION}`;
 $('dialogVersion').textContent=`v${VERSION} 暫定版`;
 function notice(message){$('notice').textContent=message;$('notice').hidden=!message;fit();}
-function enable(){for(const b of buttons)b.disabled=!ready||failed||state.hp===0;$('use').disabled=!ready||failed||state.hp===0||state.inventory.heal+state.inventory.poison+state.inventory.identify===0;$('reset').disabled=!ready||failed;$('confirmReset').disabled=!ready||failed;}
+function enable(){const stopped=!ready||failed||state.hp===0;if(stopped)directionInputs?.stop();for(const b of buttons)b.disabled=stopped;$('use').disabled=!ready||failed||state.hp===0||state.inventory.heal+state.inventory.poison+state.inventory.identify===0;$('reset').disabled=!ready||failed;$('confirmReset').disabled=!ready||failed;}
 function fit(){const r=$('stage').getBoundingClientRect();const width=Math.max(1,Math.min(r.width-2,(r.height-2)*canvas.width/canvas.height));canvas.style.width=width+'px';canvas.style.height=(width*canvas.height/canvas.width)+'px';}
 function tile(x,y,wall){
  const px=x*T,py=y*T;
@@ -43,7 +43,7 @@ function drawPotion(item){
  const x=(item.x+.5)*T,y=(item.y+.5)*T;
  if(item.kind==='identify'){ctx.fillStyle='#433823';ctx.fillRect(x-10,y-10,20,21);ctx.fillStyle='#f3deb1';ctx.fillRect(x-8,y-8,16,17);ctx.fillStyle='#9b7750';ctx.fillRect(x-11,y-11,22,4);ctx.fillRect(x-11,y+8,22,4);ctx.fillStyle='#73604b';ctx.fillRect(x-4,y-3,8,2);ctx.fillRect(x-4,y+1,8,2);return;}
  ctx.fillStyle='#233041';ctx.fillRect(x-7,y-8,14,20);
- ctx.fillStyle=state.colors[item.kind]==='赤色'?'#f0788b':'#66bdff';ctx.fillRect(x-5,y-6,10,16);
+ ctx.fillStyle='#b9c3ce';ctx.fillRect(x-5,y-6,10,16);
  ctx.fillStyle='#e5dcc3';ctx.fillRect(x-4,y-12,8,5);
  ctx.fillStyle='#fff5df';ctx.fillRect(x-3,y-4,2,7);
 }
@@ -101,15 +101,15 @@ function persist(){
  return task;
 }
 function command(direction){
- if(!ready||failed||$('dialog').open||$('itemDialog').open)return;
+ if(!ready||failed||$('dialog').open||$('itemDialog').open)return false;
  try{
-  const result=step(state,direction);if(result.kind==='wall'||result.kind==='ended')return;
-  state=result.state;render();persist();
- }catch(error){failed=true;enable();notice(error.message);}
+  const result=step(state,direction);if(result.kind==='wall'||result.kind==='ended')return false;
+  state=result.state;render();persist();return state.hp>0;
+ }catch(error){failed=true;enable();notice(error.message);return false;}
 }
-bindDirectionInputs(buttons,command);
-$('settings').onclick=()=>{if($('itemDialog').open)return;$('resetConfirm').hidden=true;$('dialog').showModal();};
-$('use').onclick=()=>{if(!ready||failed||state.hp===0||$('dialog').open)return;selectedKind=null;choosingIdentity=false;$('itemNotice').textContent='道具を選び、使う対象を選んでください。選択・名付け・キャンセルではターンは進みません。';renderItems();$('itemDialog').showModal();};
+directionInputs=bindDirectionInputs(buttons,command);
+$('settings').onclick=()=>{if($('itemDialog').open)return;directionInputs.stop();$('resetConfirm').hidden=true;$('dialog').showModal();};
+$('use').onclick=()=>{if(!ready||failed||state.hp===0||$('dialog').open)return;directionInputs.stop();selectedKind=null;choosingIdentity=false;$('itemNotice').textContent='道具を選び、使う対象を選んでください。選択・名付け・キャンセルではターンは進みません。';renderItems();$('itemDialog').showModal();};
 $('closeItems').onclick=()=>$('itemDialog').close();
 function selectItem(kind){selectedKind=kind;choosingIdentity=false;renderItems();}
 $('potionRed').onclick=()=>selectItem(colorKind('赤色'));$('potionBlue').onclick=()=>selectItem(colorKind('青色'));$('scrollItem').onclick=()=>selectItem('identify');

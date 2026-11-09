@@ -1,4 +1,4 @@
-export const VERSION='0.4.0';
+export const VERSION='0.5.0';
 export const MAP_ID='fixed-three-rooms-v1';
 export const MAP=Object.freeze([
  '#########',
@@ -210,29 +210,62 @@ export function renameItem(s,kind,name){
  log(next,note?`${appearanceName(next,kind)}に〈${note}〉と名付けた。`:`${appearanceName(next,kind)}のメモを消した。`);
  return {state:next,kind:'rename'};
 }
-// One gesture gives one command; no timer or pointer-move repeat.
-export function bindDirectionInputs(buttons,send,{window:win=window,document:doc=document}={}){
- let active=null;const held=new Set(),released=()=>{active=null;held.clear();};
+// Short taps act immediately; a held direction repeats on one controlled timer.
+export const HOLD_DELAY_MS=400, HOLD_REPEAT_MS=160;
+export function bindDirectionInputs(buttons,send,{
+ window:win=window,document:doc=document,
+ setTimeout:scheduleTimer=globalThis.setTimeout,clearTimeout:cancelTimer=globalThis.clearTimeout,
+ holdDelay=HOLD_DELAY_MS,repeatInterval=HOLD_REPEAT_MS
+}={}){
+ let active=null,timer=null,generation=0;
+ const held=new Set(),byDirection=new Map([...buttons].map(b=>[b.dataset.direction,b]));
+ function stop(){generation++;if(timer!==null){cancelTimer(timer);timer=null;}active=null;}
+ const releaseAll=()=>{stop();held.clear();};
+ const allowed=button=>!button.disabled&&!doc.hidden&&!doc.querySelector('dialog[open]');
+ function invoke(token){
+  if(!active||token!==generation)return false;
+  const current=active;
+  if(!allowed(current.button)){stop();return false;}
+  const result=send(current.button.dataset.direction);
+  if(token!==generation||active!==current)return false;
+  if(result===false){stop();return false;}
+  return true;
+ }
+ function queue(delay,token){timer=scheduleTimer(()=>{if(token!==generation)return;timer=null;if(invoke(token))queue(repeatInterval,token);},delay);}
+ function start(command){stop();active=command;const token=generation;if(invoke(token))queue(holdDelay,token);}
+ function pointerReleased(event){if(active?.source==='pointer'&&event.pointerId===active.pointerId)stop();}
  for(const button of buttons){
   button.addEventListener('pointerdown',event=>{
-   if(event.isPrimary===false||event.button!==0||active!==null)return;
-   event.preventDefault();active=event.pointerId;button.focus({preventScroll:true});
+   if(event.isPrimary===false||event.button!==0||active!==null||!allowed(button))return;
+   event.preventDefault();button.focus({preventScroll:true});
    try{button.setPointerCapture(event.pointerId);}catch{}
-   send(button.dataset.direction);
+   start({source:'pointer',pointerId:event.pointerId,button});
   });
-  for(const name of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(name,event=>{if(event.pointerId===active)active=null;});
-  // Pointer-generated clicks must not duplicate pointerdown. detail 0 permits
-  // keyboard activation and assistive technology activation.
-  button.addEventListener('click',event=>{event.preventDefault();if(event.detail===0)send(button.dataset.direction);});
+  for(const name of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(name,pointerReleased);
+  button.addEventListener('pointermove',event=>{
+   if(active?.source!=='pointer'||active.pointerId!==event.pointerId||!Number.isFinite(event.clientX)||!Number.isFinite(event.clientY))return;
+   const r=button.getBoundingClientRect();
+   if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)stop();
+  });
+  // Browser pointer clicks must not add a second command after pointerdown.
+  // detail 0 remains a single accessible/assistive activation, never a timer.
+  button.addEventListener('click',event=>{event.preventDefault();if(event.detail===0&&!active&&allowed(button))send(button.dataset.direction);});
  }
+ win.addEventListener('pointerup',pointerReleased);win.addEventListener('pointercancel',pointerReleased);
  const keys={ArrowUp:'up',ArrowRight:'right',ArrowDown:'down',ArrowLeft:'left',w:'up',d:'right',s:'down',a:'left'};
  win.addEventListener('keydown',event=>{
-  if(doc.querySelector('dialog[open]')||/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName))return;
-  const direction=keys[event.key];
-  if(direction){event.preventDefault();if(event.repeat||held.has(event.key))return;held.add(event.key);send(direction);}
-  // Space/Enter on a focused direction button follow the same no-repeat rule.
-  else if((event.key===' '||event.key==='Enter')&&event.target?.dataset?.direction){event.preventDefault();if(event.repeat||held.has(event.key))return;held.add(event.key);send(event.target.dataset.direction);}
+  if(doc.hidden||doc.querySelector('dialog[open]')||/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName))return;
+  const direction=keys[event.key]||((event.key===' '||event.key==='Enter')?event.target?.dataset?.direction:null);
+  if(!direction)return;
+  event.preventDefault();if(event.repeat||held.has(event.key))return;held.add(event.key);
+  const button=byDirection.get(direction);if(active||!button||!allowed(button))return;
+  start({source:'key',key:event.key,button});
  });
- win.addEventListener('keyup',event=>held.delete(event.key));win.addEventListener('blur',released);
- doc.addEventListener('visibilitychange',()=>{if(doc.hidden)released();});
+ win.addEventListener('keyup',event=>{
+  held.delete(event.key);
+  if(active?.source==='key'&&event.key===active.key){event.preventDefault();stop();}
+ });
+ win.addEventListener('blur',releaseAll);win.addEventListener('pagehide',releaseAll);
+ doc.addEventListener('visibilitychange',()=>{if(doc.hidden)releaseAll();});
+ return {stop};
 }
