@@ -1,4 +1,4 @@
-export const VERSION='0.2.1';
+export const VERSION='0.2.2';
 export const MAP_ID='fixed-three-rooms-v1';
 export const MAP=Object.freeze([
  '#########',

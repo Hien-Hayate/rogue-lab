@@ -55,6 +55,7 @@ function render(){
  $('enemyHp').textContent=state.enemy.hp>0?`敵 HP ${state.enemy.hp}/${state.enemy.maxHp}`:'敵 撃破';
  $('turns').textContent=`ターン ${state.turns}`;
  $('log').textContent=state.log.slice(-2).join('\n');
+ $('log').scrollTop=$('log').scrollHeight;
  $('battleInfo').textContent=`勇者 HP ${state.hp}/${state.maxHp} ／ ${ENEMY_NAME} HP ${state.enemy.hp}/${state.enemy.maxHp} ／ ${state.turns}ターン`;
  $('battleHistory').textContent=state.log.join('\n');
  canvas.setAttribute('aria-label',`固定ダンジョン。主人公は上から${state.y+1}行、左から${state.x+1}列。${DIRECTIONS[state.facing].label}向き。HP${state.hp}。${state.enemy.hp>0?`${ENEMY_NAME}は上から${state.enemy.y+1}行、左から${state.enemy.x+1}列、HP${state.enemy.hp}。`:'敵は撃破済み。'}`);
