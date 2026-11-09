@@ -1,12 +1,12 @@
-import {VERSION,MAP,DIRECTIONS,ENEMY_NAME,initialState,step,bindDirectionInputs} from './core.js';
+import {VERSION,MAP,DIRECTIONS,ENEMY_NAME,initialState,step,useItem,potionLabel,bindDirectionInputs} from './core.js';
 import {SaveStore} from './storage.js';
 const $=id=>document.getElementById(id),canvas=$('map'),ctx=canvas.getContext('2d'),buttons=[...document.querySelectorAll('[data-direction]')];
-const store=new SaveStore(),hero=new Image(),T=48;let state=initialState(),ready=false,failed=false,saveID=0;
+const store=new SaveStore(),hero=new Image(),T=48;let state=initialState(),ready=false,failed=false,saveID=0,selectedPotion=null;
 canvas.width=MAP[0].length*T;canvas.height=MAP.length*T;
 $('version').textContent=`v${VERSION}`;
 $('dialogVersion').textContent=`v${VERSION} 暫定版`;
 function notice(message){$('notice').textContent=message;$('notice').hidden=!message;fit();}
-function enable(){for(const b of buttons)b.disabled=!ready||failed||state.hp===0;$('reset').disabled=!ready||failed;$('confirmReset').disabled=!ready||failed;}
+function enable(){for(const b of buttons)b.disabled=!ready||failed||state.hp===0;$('use').disabled=!ready||failed||state.hp===0||state.inventory.heal+state.inventory.poison===0;$('reset').disabled=!ready||failed;$('confirmReset').disabled=!ready||failed;}
 function fit(){const r=$('stage').getBoundingClientRect();const width=Math.max(1,Math.min(r.width-2,(r.height-2)*canvas.width/canvas.height));canvas.style.width=width+'px';canvas.style.height=(width*canvas.height/canvas.width)+'px';}
 function tile(x,y,wall){
  const px=x*T,py=y*T;
@@ -39,9 +39,32 @@ function drawSlime(enemy){
  ctx.fillStyle='#172331';ctx.fillRect(x+7,y+3,34,4);
  ctx.fillStyle='#69c6ff';ctx.fillRect(x+8,y+4,32*enemy.hp/enemy.maxHp,2);
 }
+function drawPotion(item){
+ const x=(item.x+.5)*T,y=(item.y+.5)*T;
+ ctx.fillStyle='#233041';ctx.fillRect(x-7,y-8,14,20);
+ ctx.fillStyle=state.colors[item.kind]==='赤色'?'#f0788b':'#66bdff';ctx.fillRect(x-5,y-6,10,16);
+ ctx.fillStyle='#e5dcc3';ctx.fillRect(x-4,y-12,8,5);
+ ctx.fillStyle='#fff5df';ctx.fillRect(x-3,y-4,2,7);
+}
+function renderItems(){
+ for(const [id,color] of [['potionRed','赤色'],['potionBlue','青色']]){
+  const kind=['heal','poison'].find(k=>state.colors[k]===color);
+  $(id).textContent=`${potionLabel(state,kind)}${state.identified[kind]?`（${color}）`:''} ×${state.inventory[kind]}`;
+  $(id).disabled=!ready||failed||state.hp===0||state.inventory[kind]===0;
+ }
+ $('weaponStatus').textContent=`武器：${state.coating?potionLabel(state,state.coating)+'を塗布済み（次の攻撃1回）':'薬なし'} ／ 自然回復：${state.recovery>0?'可能':'空腹で停止'}`;
+ $('targetPanel').hidden=selectedPotion===null;
+ if(selectedPotion){
+  $('selectedItem').textContent=potionLabel(state,selectedPotion);
+  $('useSelf').disabled=!ready||failed||state.hp===0||state.inventory[selectedPotion]===0;
+  $('useWeapon').disabled=$('useSelf').disabled||state.coating!==null;
+  $('useWeapon').textContent=state.coating?'武器（塗布済み）':'武器';
+ }
+}
 function render(){
  ctx.imageSmoothingEnabled=false;
  MAP.forEach((row,y)=>[...row].forEach((v,x)=>tile(x,y,v==='#')));
+ for(const item of state.floorItems)drawPotion(item);
  if(state.enemy.hp>0)drawSlime(state.enemy);
  const cx=(state.x+.5)*T,cy=(state.y+.5)*T;
  // Crop only the transparent padding during rendering. The approved PNG is
@@ -56,10 +79,10 @@ function render(){
  $('turns').textContent=`ターン ${state.turns}`;
  $('log').textContent=state.log.slice(-2).join('\n');
  $('log').scrollTop=$('log').scrollHeight;
- $('battleInfo').textContent=`勇者 HP ${state.hp}/${state.maxHp} ／ ${ENEMY_NAME} HP ${state.enemy.hp}/${state.enemy.maxHp} ／ ${state.turns}ターン`;
+ $('battleInfo').textContent=`勇者 HP ${state.hp}/${state.maxHp} ／ ${ENEMY_NAME} HP ${state.enemy.hp}/${state.enemy.maxHp} ／ ${state.turns}ターン ／ 自然回復：${state.recovery>0?'可能':'空腹で停止'}`;
  $('battleHistory').textContent=state.log.join('\n');
  canvas.setAttribute('aria-label',`固定ダンジョン。主人公は上から${state.y+1}行、左から${state.x+1}列。${DIRECTIONS[state.facing].label}向き。HP${state.hp}。${state.enemy.hp>0?`${ENEMY_NAME}は上から${state.enemy.y+1}行、左から${state.enemy.x+1}列、HP${state.enemy.hp}。`:'敵は撃破済み。'}`);
- enable();
+ enable();renderItems();
 }
 function persist(){
  const id=++saveID;$('saved').textContent='端末に保存中…';
@@ -68,14 +91,28 @@ function persist(){
  return task;
 }
 function command(direction){
- if(!ready||failed||$('dialog').open)return;
+ if(!ready||failed||$('dialog').open||$('itemDialog').open)return;
  try{
   const result=step(state,direction);if(result.kind==='wall'||result.kind==='ended')return;
   state=result.state;render();persist();
  }catch(error){failed=true;enable();notice(error.message);}
 }
 bindDirectionInputs(buttons,command);
-$('settings').onclick=()=>{$('resetConfirm').hidden=true;$('dialog').showModal();};
+$('settings').onclick=()=>{if($('itemDialog').open)return;$('resetConfirm').hidden=true;$('dialog').showModal();};
+$('use').onclick=()=>{if(!ready||failed||state.hp===0||$('dialog').open)return;selectedPotion=null;$('itemNotice').textContent='薬を選び、使う対象を選んでください。選択とキャンセルではターンは進みません。';renderItems();$('itemDialog').showModal();};
+$('closeItems').onclick=()=>$('itemDialog').close();
+function selectColor(color){selectedPotion=['heal','poison'].find(k=>state.colors[k]===color);renderItems();}
+$('potionRed').onclick=()=>selectColor('赤色');$('potionBlue').onclick=()=>selectColor('青色');
+function applyPotion(target){
+ if(!ready||failed||state.hp===0||!$('itemDialog').open||!selectedPotion)return;
+ try{
+  const result=useItem(state,selectedPotion,target);
+  if(result.kind==='empty'||result.kind==='coated'){$('itemNotice').textContent=result.kind==='empty'?'その薬はありません。':'武器にはすでに薬が塗ってあります。';return;}
+  if(result.kind==='ended')return;
+  state=result.state;selectedPotion=null;$('itemDialog').close();render();persist();
+ }catch(error){failed=true;enable();notice(error.message);}
+}
+$('useSelf').onclick=()=>applyPotion('self');$('useWeapon').onclick=()=>applyPotion('weapon');
 $('close').onclick=()=>$('dialog').close();
 $('reset').onclick=()=>{$('resetConfirm').hidden=false;};$('cancelReset').onclick=()=>{$('resetConfirm').hidden=true;};
 $('confirmReset').onclick=()=>{if(!ready||failed)return;state=initialState();render();persist();$('dialog').close();};
@@ -103,7 +140,7 @@ enable();fit();
 async function boot(){
  try{
   const [saved]=await Promise.all([store.open(),new Promise((resolve,reject)=>{hero.onload=resolve;hero.onerror=()=>reject(new Error('勇者画像を読み込めません'));hero.src='./hero.png';})]);
-  state=saved||initialState();render();await persist();ready=true;enable();
+  state=saved||initialState();render();await persist();ready=true;enable();renderItems();
  }catch(error){failed=true;enable();notice(error.message);$('saved').textContent='起動・保存を停止';$('saved').dataset.error='yes';}
  await prepareOffline();
 }

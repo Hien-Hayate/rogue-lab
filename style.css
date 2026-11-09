@@ -75,7 +75,9 @@ button:disabled { opacity: .4; }
 #heroHp[data-low=yes] { color: #ffae9f; }
 #enemyHp { color: #9fd8ff; }
 #turns { color: #d2d9e3; }
-.message-panel { grid-area: 3 / 2; position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.message-panel { grid-area: 3 / 2; min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-rows: minmax(0, 1fr) 44px; gap: 4px; }
+.message-copy { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+#use { font-size: 18px; border: 1px solid #8390a3; border-radius: 9px; background: #2c3949; margin-right: 5px; }
 #log, #notice {
   position: absolute;
   inset: 0;
@@ -113,3 +115,5 @@ dialog button { font-size: 16px; border: 1px solid #67788c; background: #2c3949;
   .battle-status { gap: 8px; }
   #settings { padding-left: 5px; padding-right: 5px; }
 }
+
+.item-list{display:grid;gap:8px}.item-list button{text-align:left;width:100%;margin:0}.potion-red{border-left:5px solid #f0788b}.potion-blue{border-left:5px solid #66bdff}.targets{display:flex;gap:12px}.targets button{flex:1}#selectedItem{font-size:18px}#weaponStatus{font-size:15px}
