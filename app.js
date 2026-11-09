@@ -1,8 +1,10 @@
-import {MAP,DIRECTIONS,ENEMY_NAME,initialState,step,bindDirectionInputs} from './core.js';
+import {VERSION,MAP,DIRECTIONS,ENEMY_NAME,initialState,step,bindDirectionInputs} from './core.js';
 import {SaveStore} from './storage.js';
 const $=id=>document.getElementById(id),canvas=$('map'),ctx=canvas.getContext('2d'),buttons=[...document.querySelectorAll('[data-direction]')];
 const store=new SaveStore(),hero=new Image(),T=48;let state=initialState(),ready=false,failed=false,saveID=0;
 canvas.width=MAP[0].length*T;canvas.height=MAP.length*T;
+$('version').textContent=`v${VERSION}`;
+$('dialogVersion').textContent=`v${VERSION} 暫定版`;
 function notice(message){$('notice').textContent=message;$('notice').hidden=!message;fit();}
 function enable(){for(const b of buttons)b.disabled=!ready||failed||state.hp===0;$('reset').disabled=!ready||failed;$('confirmReset').disabled=!ready||failed;}
 function fit(){const r=$('stage').getBoundingClientRect();const width=Math.max(1,Math.min(r.width-2,(r.height-2)*canvas.width/canvas.height));canvas.style.width=width+'px';canvas.style.height=(width*canvas.height/canvas.width)+'px';}
