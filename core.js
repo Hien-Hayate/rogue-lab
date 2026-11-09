@@ -1,4 +1,4 @@
-export const VERSION='0.1.0';
+export const VERSION='0.2.0';
 export const MAP_ID='fixed-three-rooms-v1';
 export const MAP=Object.freeze([
  '#########',
@@ -19,15 +19,69 @@ export const MAP=Object.freeze([
 ]);
 export const DIRECTIONS=Object.freeze({up:{dx:0,dy:-1,label:'上'},right:{dx:1,dy:0,label:'右'},down:{dx:0,dy:1,label:'下'},left:{dx:-1,dy:0,label:'左'}});
 export const walkable=(x,y)=>Number.isInteger(x)&&Number.isInteger(y)&&MAP[y]?.[x]==='.';
-export const initialState=()=>({schema:1,map:MAP_ID,x:3,y:2,facing:'down',moves:0});
-export function validState(s){return !!s&&s.schema===1&&s.map===MAP_ID&&walkable(s.x,s.y)&&Object.hasOwn(DIRECTIONS,s.facing)&&Number.isSafeInteger(s.moves)&&s.moves>=0;}
+export const PLAYER_MAX_HP=20, PLAYER_ATTACK=3, ENEMY_MAX_HP=8, ENEMY_ATTACK=2;
+export const ENEMY_NAME='テストスライム';
+const counter=n=>Number.isSafeInteger(n)&&n>=0;
+function validPosition(s){return !!s&&s.map===MAP_ID&&walkable(s.x,s.y)&&Object.hasOwn(DIRECTIONS,s.facing)&&counter(s.moves);}
+function spawnEnemy(player){
+ // An old save may have the hero standing at the default enemy location.
+ const positions=[{x:6,y:7},...MAP.flatMap((row,y)=>[...row].flatMap((v,x)=>v==='.'?[{x,y}]:[]))];
+ const p=positions.find(p=>Math.abs(p.x-player.x)+Math.abs(p.y-player.y)>1);
+ return {...p,hp:ENEMY_MAX_HP,maxHp:ENEMY_MAX_HP};
+}
+function addCombat(s){return {...s,schema:2,hp:PLAYER_MAX_HP,maxHp:PLAYER_MAX_HP,turns:s.moves,enemy:spawnEnemy(s),log:['テストスライムに向かって進むと攻撃。方向転換はターンを使いません。']};}
+export const initialState=()=>addCombat({map:MAP_ID,x:3,y:2,facing:'down',moves:0});
+export function validState(s){
+ if(!validPosition(s)||s.schema!==2||s.maxHp!==PLAYER_MAX_HP||!counter(s.hp)||s.hp>s.maxHp||!counter(s.turns)||s.turns<s.moves)return false;
+ const e=s.enemy;
+ return !!e&&walkable(e.x,e.y)&&e.maxHp===ENEMY_MAX_HP&&counter(e.hp)&&e.hp<=e.maxHp&&
+  !(e.hp>0&&e.x===s.x&&e.y===s.y)&&Array.isArray(s.log)&&s.log.length<=3&&s.log.every(v=>typeof v==='string'&&v.length<=160);
+}
+export function restoreState(s){
+ if(s?.schema===1&&validPosition(s))return addCombat(s);
+ if(validState(s))return structuredClone(s);
+ throw new Error('保存データを安全に読み込めません。初期化はしていません');
+}
+function log(s,message){s.log=[...s.log,message].slice(-3);}
+function enemyAction(s){
+ const e=s.enemy;if(e.hp===0)return;
+ if(Math.abs(e.x-s.x)+Math.abs(e.y-s.y)===1){
+  s.hp=Math.max(0,s.hp-ENEMY_ATTACK);log(s,`${ENEMY_NAME}の攻撃！ 勇者に${ENEMY_ATTACK}ダメージ。`);
+  if(s.hp===0)log(s,'勇者は倒れた。「設定」から、もう一度試せます。');
+  return;
+ }
+ // Breadth-first search follows connected floor tiles, including room exits.
+ const queue=[{x:e.x,y:e.y,first:null}],seen=new Set([`${e.x},${e.y}`]);
+ for(let i=0;i<queue.length;i++){
+  const current=queue[i];
+  for(const {dx,dy} of Object.values(DIRECTIONS)){
+   const x=current.x+dx,y=current.y+dy,key=`${x},${y}`;
+   if(!walkable(x,y)||seen.has(key))continue;
+   const first=current.first||{x,y};
+   if(x===s.x&&y===s.y){e.x=first.x;e.y=first.y;return;}
+   seen.add(key);queue.push({x,y,first});
+  }
+ }
+}
 export function step(s,direction){
  if(!validState(s)||!Object.hasOwn(DIRECTIONS,direction))throw new Error('移動状態が不正です');
+ if(s.hp===0)return {state:s,kind:'ended'};
  if(s.facing!==direction)return {state:{...s,facing:direction},kind:'turn'};
  const {dx,dy}=DIRECTIONS[direction],x=s.x+dx,y=s.y+dy;
  if(!walkable(x,y))return {state:s,kind:'wall'};
- if(s.moves===Number.MAX_SAFE_INTEGER)throw new Error('移動回数の上限です');
- return {state:{...s,x,y,moves:s.moves+1},kind:'move'};
+ if(s.turns===Number.MAX_SAFE_INTEGER)throw new Error('ターン数の上限です');
+ const next=structuredClone(s);next.turns++;
+ const attack=next.enemy.hp>0&&next.enemy.x===x&&next.enemy.y===y;
+ if(attack){
+  next.enemy.hp=Math.max(0,next.enemy.hp-PLAYER_ATTACK);
+  log(next,`勇者の攻撃！ ${ENEMY_NAME}に${PLAYER_ATTACK}ダメージ。`);
+  if(next.enemy.hp===0)log(next,`${ENEMY_NAME}を倒した！「設定」から再挑戦できます。`);
+ }else{
+  if(s.moves===Number.MAX_SAFE_INTEGER)throw new Error('移動回数の上限です');
+  next.x=x;next.y=y;next.moves++;
+ }
+ enemyAction(next);
+ return {state:next,kind:attack?'attack':'move'};
 }
 // One gesture gives one command; no timer or pointer-move repeat.
 export function bindDirectionInputs(buttons,send,{window:win=window,document:doc=document}={}){

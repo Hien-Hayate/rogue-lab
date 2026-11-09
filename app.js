@@ -1,10 +1,10 @@
-import {MAP,DIRECTIONS,initialState,step,bindDirectionInputs} from './core.js';
+import {MAP,DIRECTIONS,ENEMY_NAME,initialState,step,bindDirectionInputs} from './core.js';
 import {SaveStore} from './storage.js';
 const $=id=>document.getElementById(id),canvas=$('map'),ctx=canvas.getContext('2d'),buttons=[...document.querySelectorAll('[data-direction]')];
 const store=new SaveStore(),hero=new Image(),T=48;let state=initialState(),ready=false,failed=false,saveID=0;
 canvas.width=MAP[0].length*T;canvas.height=MAP.length*T;
 function notice(message){$('notice').textContent=message;$('notice').hidden=!message;fit();}
-function enable(){for(const b of buttons)b.disabled=!ready||failed;$('reset').disabled=!ready||failed;$('confirmReset').disabled=!ready||failed;}
+function enable(){for(const b of buttons)b.disabled=!ready||failed||state.hp===0;$('reset').disabled=!ready||failed;$('confirmReset').disabled=!ready||failed;}
 function fit(){const r=$('stage').getBoundingClientRect();const width=Math.max(1,Math.min(r.width-2,(r.height-2)*canvas.width/canvas.height));canvas.style.width=width+'px';canvas.style.height=(width*canvas.height/canvas.width)+'px';}
 function tile(x,y,wall){
  const px=x*T,py=y*T;
@@ -17,17 +17,46 @@ function tile(x,y,wall){
  ctx.fillStyle=wall?'#8590a0':'#d0c2a7';ctx.fillRect(px+3,py+3,T-6,2);ctx.fillRect(px+3,py+3,2,T-6);
  ctx.fillStyle=wall?'#1c2533':'#786f61';ctx.fillRect(px,py+T-3,T,3);ctx.fillRect(px+T-3,py,3,T);
 }
+function drawSlime(enemy){
+ const x=enemy.x*T,y=enemy.y*T;
+ // A temporary, code-drawn pixel slime; no extra images or network requests.
+ const pixels=[
+  '     ooooo     ',
+  '   oobbbbboo   ',
+  '  obbccccbbbo  ',
+  ' obbcccccbbbbo ',
+  ' obbwkbbbwkbbo ',
+  'obbbwkbbbwkbbbo',
+  'obbbbbbbbbbbbbo',
+  'obbbbbbdbbbbbbo',
+  ' obbbbbdbbbbbo ',
+  '  ooooooooooo  '
+ ];
+ const colors={o:'#142b45',b:'#448cd1',c:'#8cd8ff',w:'#fff8e5',k:'#182333',d:'#1b4b78'};
+ pixels.forEach((row,py)=>[...row].forEach((v,px)=>{if(colors[v]){ctx.fillStyle=colors[v];ctx.fillRect(x+1.5+px*3,y+10+py*3,3,3);}}));
+ ctx.fillStyle='#172331';ctx.fillRect(x+7,y+3,34,4);
+ ctx.fillStyle='#69c6ff';ctx.fillRect(x+8,y+4,32*enemy.hp/enemy.maxHp,2);
+}
 function render(){
  ctx.imageSmoothingEnabled=false;
  MAP.forEach((row,y)=>[...row].forEach((v,x)=>tile(x,y,v==='#')));
+ if(state.enemy.hp>0)drawSlime(state.enemy);
  const cx=(state.x+.5)*T,cy=(state.y+.5)*T;
  // Crop only the transparent padding during rendering. The approved PNG is
  // retained unchanged in the app package.
  if(hero.complete&&hero.naturalWidth){const h=T*.90,w=h*684/1050;ctx.drawImage(hero,286,104,684,1050,cx-w/2,cy-h/2,w,h);}
- const {dx,dy}=DIRECTIONS[state.facing],tip={x:cx+dx*T*.45,y:cy+dy*T*.45},base={x:cx+dx*T*.30,y:cy+dy*T*.30};
- ctx.beginPath();ctx.moveTo(tip.x,tip.y);ctx.lineTo(base.x-dy*4,base.y+dx*4);ctx.lineTo(base.x+dy*4,base.y-dx*4);ctx.closePath();ctx.fillStyle='#ffdb8e';ctx.fill();ctx.strokeStyle='#352c20';ctx.lineWidth=1;ctx.stroke();
+ const {dx,dy}=DIRECTIONS[state.facing],tip={x:cx+dx*T*.47,y:cy+dy*T*.47},base={x:cx+dx*T*.17,y:cy+dy*T*.17};
+ ctx.beginPath();ctx.moveTo(tip.x,tip.y);ctx.lineTo(base.x-dy*9,base.y+dx*9);ctx.lineTo(base.x+dy*9,base.y-dx*9);ctx.closePath();ctx.fillStyle='#ffe16c';ctx.fill();ctx.strokeStyle='#332c1b';ctx.lineWidth=2;ctx.stroke();
  $('status').textContent=`向き：${DIRECTIONS[state.facing].label}　移動：${state.moves}`;
- canvas.setAttribute('aria-label',`固定ダンジョン。主人公は上から${state.y+1}行、左から${state.x+1}列。${DIRECTIONS[state.facing].label}向き。移動${state.moves}回。`);
+ $('heroHp').textContent=`勇者 HP ${state.hp}/${state.maxHp}`;
+ $('heroHp').dataset.low=state.hp<=6?'yes':'no';
+ $('enemyHp').textContent=state.enemy.hp>0?`敵 HP ${state.enemy.hp}/${state.enemy.maxHp}`:'敵 撃破';
+ $('turns').textContent=`ターン ${state.turns}`;
+ $('log').textContent=state.log.slice(-2).join('\n');
+ $('battleInfo').textContent=`勇者 HP ${state.hp}/${state.maxHp} ／ ${ENEMY_NAME} HP ${state.enemy.hp}/${state.enemy.maxHp} ／ ${state.turns}ターン`;
+ $('battleHistory').textContent=state.log.join('\n');
+ canvas.setAttribute('aria-label',`固定ダンジョン。主人公は上から${state.y+1}行、左から${state.x+1}列。${DIRECTIONS[state.facing].label}向き。HP${state.hp}。${state.enemy.hp>0?`${ENEMY_NAME}は上から${state.enemy.y+1}行、左から${state.enemy.x+1}列、HP${state.enemy.hp}。`:'敵は撃破済み。'}`);
+ enable();
 }
 function persist(){
  const id=++saveID;$('saved').textContent='端末に保存中…';
@@ -37,8 +66,10 @@ function persist(){
 }
 function command(direction){
  if(!ready||failed||$('dialog').open)return;
- const result=step(state,direction);if(result.kind==='wall')return;
- state=result.state;render();persist();
+ try{
+  const result=step(state,direction);if(result.kind==='wall'||result.kind==='ended')return;
+  state=result.state;render();persist();
+ }catch(error){failed=true;enable();notice(error.message);}
 }
 bindDirectionInputs(buttons,command);
 $('settings').onclick=()=>{$('resetConfirm').hidden=true;$('dialog').showModal();};
@@ -51,6 +82,8 @@ async function prepareOffline(){
  try{
   if(!window.isSecureContext||!navigator.serviceWorker)throw new Error('HTTPSのURLで初回準備が必要です');
   const registration=await navigator.serviceWorker.register('./sw.js',{scope:'./'});
+  const watchUpdate=()=>{const worker=registration.installing;worker?.addEventListener('statechange',()=>{if(worker.state==='installed'&&navigator.serviceWorker.controller)$('offline').textContent='更新の準備ができました。すべての画面を閉じて開き直してください';});};
+  registration.addEventListener('updatefound',watchUpdate);watchUpdate();
   const status=await new Promise((resolve,reject)=>{
    const timeout=setTimeout(()=>reject(new Error('準備の確認がタイムアウトしました。オンラインで開き直してください')),12000);
    navigator.serviceWorker.ready.then(reg=>{
@@ -60,7 +93,7 @@ async function prepareOffline(){
   });
   if(!status.ready)throw new Error('必要ファイルの保存が未完了です。オンラインで開き直してください');
   $('offline').textContent='オフライン準備完了';$('offline').dataset.ready='yes';
-  registration.addEventListener('updatefound',()=>{const worker=registration.installing;worker?.addEventListener('statechange',()=>{if(worker.state==='installed'&&navigator.serviceWorker.controller)$('offline').textContent='更新の準備ができました。すべての画面を閉じて開き直してください';});});
+  if(registration.waiting)$('offline').textContent='更新の準備ができました。すべての画面を閉じて開き直してください';
  }catch(error){$('offline').textContent='オフライン準備未完了：'+error.message;$('offline').dataset.ready='no';}
 }
 enable();fit();

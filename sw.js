@@ -1,7 +1,7 @@
-const PREFIX='rogue-walk:'+self.registration.scope+':',CACHE=PREFIX+'v0.1.0';
+const PREFIX='rogue-walk:'+self.registration.scope+':',CACHE=PREFIX+'v0.2.0';
 const ASSETS=['./','./index.html','./style.css','./app.js','./core.js','./storage.js','./hero.png','./icon.svg','./manifest.webmanifest'];
 const urls=ASSETS.map(path=>new URL(path,self.registration.scope).href);
-self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(urls)));});
+self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(urls.map(url=>new Request(url,{cache:'reload'})))));});
 self.addEventListener('activate',event=>{event.waitUntil((async()=>{for(const key of await caches.keys())if(key.startsWith(PREFIX)&&key!==CACHE)await caches.delete(key);await self.clients.claim();})());});
 self.addEventListener('fetch',event=>{
  const url=new URL(event.request.url);if(event.request.method!=='GET'||url.origin!==self.location.origin||!url.href.startsWith(self.registration.scope))return;
