@@ -117,3 +117,5 @@ dialog button { font-size: 16px; border: 1px solid #67788c; background: #2c3949;
 }
 
 .item-list{display:grid;gap:8px}.item-list button{text-align:left;width:100%;margin:0}.potion-red{border-left:5px solid #f0788b}.potion-blue{border-left:5px solid #66bdff}.targets{display:flex;gap:12px}.targets button{flex:1}#selectedItem{font-size:18px}#weaponStatus{font-size:15px}
+
+.scroll-item{border-left:5px solid #e8d2a4}.identify-options{display:grid;gap:8px}.identify-options button{margin:0;text-align:left;width:100%}#namePanel{margin-top:16px}#namePanel label{display:block;font-size:16px;line-height:1.5}#nameInput{width:100%;font:inherit;font-size:16px;min-height:44px;color:#eef0ed;background:#101720;border:1px solid #75879c;border-radius:6px;padding:8px}#identifyPanel h2{font-size:20px}

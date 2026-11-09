@@ -1,4 +1,4 @@
-const PREFIX='rogue-walk:'+self.registration.scope+':',CACHE=PREFIX+'v0.3.0';
+const PREFIX='rogue-walk:'+self.registration.scope+':',CACHE=PREFIX+'v0.4.0';
 const ASSETS=['./','./index.html','./style.css','./app.js','./core.js','./storage.js','./hero.png','./icon.svg','./manifest.webmanifest'];
 const urls=ASSETS.map(path=>new URL(path,self.registration.scope).href);
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(urls.map(url=>new Request(url,{cache:'reload'})))));});
